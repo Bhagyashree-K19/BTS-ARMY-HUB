@@ -1,0 +1,153 @@
+/* Tailwind's three layers. `base` = resets/defaults, `components` = where
+   we can define small reusable classes with @apply, `utilities` = the
+   bg-*, text-*, flex, etc. classes used directly in JSX. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ===========================================
+   BTS ARMY HUB — Design tokens
+   Styling itself now lives in Tailwind utility classes inside each
+   component/page. What's left here is:
+   1) CSS variables that feed tailwind.config.js (colors.primary,
+      colors.surface, etc.), and
+   2) a couple of truly global, page-independent rules (base typography,
+      the ambient background blobs, focus outlines) that don't belong
+      to any single component.
+
+   EDITED: light mode removed — app is dark-mode only now, so dark
+   theme values are merged directly into :root instead of living behind
+   a [data-theme='dark'] selector.
+=========================================== */
+
+:root {
+  /* Brand palette — purple is the ARMY/BTS "Borahae" color */
+  --color-primary: #7c3aed;
+  --color-primary-light: #a78bfa;
+  --color-primary-dark: #5b21b6;
+  --color-accent: #ff2d78;
+  --color-accent-light: #ff6fa5;
+  --glow-purple: rgba(124, 58, 237, 0.45);
+  --glow-pink: rgba(255, 45, 120, 0.35);
+
+  /* Dark theme (now the only theme) */
+  --bg-body: #120f1a;
+  --bg-surface: #1c1826;
+  --bg-surface-alt: #241f30;
+  --text-primary: #f3f1f8;
+  --text-secondary: #b3aac2;
+  --border-color: #322b40;
+  --shadow-color: rgba(0, 0, 0, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%; /* ADDED */
+  background-color: var(--bg-body); /* ADDED */
+}
+
+#root {
+  min-height: 100vh;
+  background-color: var(--bg-body);
+}
+
+body {
+  position: relative;
+  overflow-x: hidden;
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  background-color: var(--bg-body);
+  color: var(--text-primary);
+  transition: background-color 250ms ease, color 250ms ease;
+  line-height: 1.5;
+  min-height: 100%;
+}
+
+/* Soft ambient color blobs behind the whole app — pure CSS, no images,
+   so the site never feels flat even on pages with little content. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  width: 480px;
+  height: 480px;
+  border-radius: 50%;
+  filter: blur(130px);
+  z-index: -1;
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+body::before {
+  background: var(--color-primary);
+  top: -160px;
+  left: -120px;
+}
+
+body::after {
+  background: var(--color-accent);
+  bottom: -160px;
+  right: -120px;
+}
+
+h1, h2, h3, h4 {
+  line-height: 1.2;
+  margin: 0 0 1rem 0;
+}
+
+p {
+  margin: 0 0 1rem 0;
+  color: var(--text-secondary);
+}
+
+a {
+  color: inherit;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button, input, textarea {
+  font-family: inherit;
+}
+
+/* Utility: visually accessible focus ring, applied globally to every
+   interactive element rather than repeated as a Tailwind class on each one */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--color-primary-light);
+  outline-offset: 2px;
+}
+
+/* Small set of reusable classes for a pattern repeated on almost every
+   page (a padded content area + heading + subheading). @apply lets us
+   name a combination of Tailwind utilities once instead of retyping the
+   same long class string on every page — still plain Tailwind, just DRY. */
+@layer components {
+  .page-shell {
+    @apply min-h-[calc(100vh-260px)] py-8 sm:py-12 max-w-app mx-auto px-6;
+  }
+  .page-title {
+    @apply text-[1.4rem] sm:text-[2.3rem] mb-2;
+  }
+  .page-subtitle {
+    @apply text-muted text-[1.05rem] mb-8;
+  }
+  .card-grid {
+    @apply grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-6;
+  }
+}
