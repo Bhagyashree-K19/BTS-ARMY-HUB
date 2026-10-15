@@ -1,8 +1,11 @@
 import { Routes, Route } from 'react-router-dom'
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
 import Navbar from './components/Navbar.jsx'
 import Footer from './components/Footer.jsx'
 import PlayerBar from './components/PlayerBar.jsx'
-import { PlayerProvider, usePlayer } from './context/PlayerContext.jsx' // EDITED: also import usePlayer
+import { PlayerProvider, usePlayer } from './context/PlayerContext.jsx'
+import AmyTalkRoutes from './features/amytalk/AmyTalkRoutes.jsx' // NEW
 
 import Home from './pages/Home.jsx'
 import Members from './pages/Members.jsx'
@@ -18,16 +21,16 @@ import Profile from './pages/Profile.jsx'
 import Favorites from './pages/Favorites.jsx'
 import NotFound from './pages/NotFound.jsx'
 
-// ADDED: split out so it can live *inside* PlayerProvider and safely call
+// Split out so it can live *inside* PlayerProvider and safely call
 // usePlayer() -- App() itself renders the provider, so it can't consume it.
 function AppLayout() {
-  const { currentSong } = usePlayer() // ADDED
+  const { currentSong } = usePlayer()
 
   return (
     <div className="min-h-screen">
       <Navbar />
 
-      {/* EDITED: pb-20 only applied when a song is actually loaded */}
+      {/* pb-20 only applied when a song is actually loaded */}
       <div className={`flex flex-col min-h-screen min-[861px]:ml-60 ${currentSong ? 'pb-20' : ''}`}>
         <main>
           <Routes>
@@ -59,9 +62,22 @@ function AppLayout() {
 
 function App() {
   return (
-    <PlayerProvider>
-      <AppLayout />
-    </PlayerProvider>
+    <>
+      <ToastContainer /> {/* NEW: shows AmyTalk's messages */}
+      <Routes>
+        {/* NEW: AmyTalk is full screen, outside the sidebar layout */}
+        <Route path="/amytalk/*" element={<AmyTalkRoutes />} />
+        {/* Everything else works exactly as before */}
+        <Route
+          path="/*"
+          element={
+            <PlayerProvider>
+              <AppLayout />
+            </PlayerProvider>
+          }
+        />
+      </Routes>
+    </>
   )
 }
 
