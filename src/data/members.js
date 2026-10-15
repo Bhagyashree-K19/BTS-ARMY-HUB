@@ -31,7 +31,7 @@ const members = [
   },
   {
     id: 'j-hope',
-    stageName: 'j-hope',
+    stageName: 'J-Hope',
     realName: 'Jung Ho-seok',
     position: 'Main Dancer, Rapper',
     birthday: 'February 18, 1994',
