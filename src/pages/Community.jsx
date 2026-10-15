@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { ref, push, remove, update, onValue } from "firebase/database";
-import { database } from "../firebase.js";
+import { doc, getDoc } from "firebase/firestore";
+import { database, db } from "../firebase.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
@@ -81,6 +82,7 @@ function CommentNode({
   setReplyText,
   handleAddReply,
   setNodeToDelete,
+  profiles,
 }) {
   // each comment remembers by itself if its replies are hidden
   const [collapsed, setCollapsed] = useState(false);
@@ -88,6 +90,9 @@ function CommentNode({
   const replyTarget = items.find((item) => item.id === replyingToId);
   const parent = depth > 0 ? items.find((item) => item.id === node.parentId) : null;
   const isOwn = currentUser && currentUser.uid === node.authorUid;
+  const profile = profiles[node.authorUid];
+  const displayName = profile?.name || node.authorName;
+  const parentProfile = parent ? profiles[parent.authorUid] : null;
   const isBeingRepliedTo = replyingToId === node.id;
   const replyCount = collectDescendantIds(node).length;
 
@@ -105,16 +110,27 @@ function CommentNode({
     <li className={wrapperClasses}>
       <div className={`${bubbleClasses} ${isBeingRepliedTo ? "ring-2 ring-primary" : ""}`}>
         <div className="flex items-start gap-3">
-          <div
-            aria-hidden="true"
-            className="w-8 h-8 shrink-0 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold"
-          >
-            {node.authorName?.charAt(0).toUpperCase()}
-          </div>
+          {profile?.avatar ? (
+            <img
+              src={profile.avatar}
+              alt=""
+              className="w-8 h-8 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="w-8 h-8 shrink-0 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold"
+            >
+              {displayName?.charAt(0).toUpperCase()}
+            </div>
+          )}
 
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 text-sm">
-              <strong className="text-ink">{node.authorName}</strong>
+              <strong className="text-ink">{displayName}</strong>
+              {profile?.username && (
+                <span className="text-xs text-muted">@{profile.username}</span>
+              )}
               {isOwn && (
                 <span className="text-xs text-primary border border-primary rounded-full px-2">
                   You
@@ -131,7 +147,7 @@ function CommentNode({
             {parent && (
               <p className="text-xs text-muted mt-0.5 truncate">
                 ↪ replying to{" "}
-                <span className="text-primary font-semibold">@{parent.authorName}</span>
+                <span className="text-primary font-semibold">@{parentProfile?.username || parent.authorName}</span>
               </p>
             )}
 
@@ -238,6 +254,7 @@ function CommentNode({
               setReplyText={setReplyText}
               handleAddReply={handleAddReply}
               setNodeToDelete={setNodeToDelete}
+              profiles={profiles}
             />
           ))}
         </ul>
@@ -252,6 +269,7 @@ function Community() {
   const [newComment, setNewComment] = useState("");
   const [error, setError] = useState("");
   const [nodeToDelete, setNodeToDelete] = useState(null); // the tree node (with .children) pending delete confirmation
+  const [profiles, setProfiles] = useState({}); // uid -> profile from Firestore
 
   // Which item id (comment OR reply) is currently being replied to, and
   // what's typed into that reply box. Only one open at a time.
@@ -270,6 +288,34 @@ function Community() {
     });
     return unsubscribe;
   }, []);
+
+  // Look up each comment author's profile (avatar, name, username) once.
+  useEffect(() => {
+    const missing = [...new Set(items.map((i) => i.authorUid))].filter(
+      (uid) => uid && !(uid in profiles),
+    );
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, "users", uid));
+          return [uid, snap.exists() ? snap.data() : null];
+        } catch {
+          return [uid, null]; // no access or no profile: fall back to the saved name
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) {
+        setProfiles((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   const handleAddComment = async (e) => {
     e.preventDefault();
@@ -292,9 +338,18 @@ function Community() {
 
   // Generalized to reply to ANY node (a top-level comment or an existing
   // reply), by just setting parentId to that node's id.
-  const handleAddReply = async (e, parentId) => {
+    const handleAddReply = async (e, parentId) => {
     e.preventDefault();
     if (!replyText.trim()) return;
+
+    // Everyone above this reply in the thread, so the database rules can let
+    // them delete it later (see the "ancestors" rule).
+    const parentItem = items.find((item) => item.id === parentId);
+    if (!parentItem) return;
+    const ancestors = {
+      ...(parentItem.ancestors || {}),
+      [parentItem.authorUid]: true,
+    };
 
     await push(ref(database, "comments"), {
       authorUid: currentUser.uid,
@@ -302,6 +357,7 @@ function Community() {
       text: replyText.trim(),
       createdAt: Date.now(),
       parentId,
+      ancestors,
     });
 
     setReplyText("");
@@ -382,6 +438,7 @@ function Community() {
               setReplyText={setReplyText}
               handleAddReply={handleAddReply}
               setNodeToDelete={setNodeToDelete}
+              profiles={profiles}
             />
           ))}
         </ul>

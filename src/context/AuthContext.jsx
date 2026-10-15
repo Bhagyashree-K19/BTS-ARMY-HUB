@@ -7,7 +7,8 @@ import {
   updateProfile,
   sendPasswordResetEmail,
 } from 'firebase/auth'
-import { auth } from '../firebase.js'
+import { doc, runTransaction } from 'firebase/firestore'
+import { auth, db } from '../firebase.js'
 
 // -----------------------------------------------------------------------
 // This uses real Firebase Authentication: accounts are stored on
@@ -56,9 +57,44 @@ export function AuthProvider({ children }) {
     return unsubscribe
   }, [])
 
-  const register = async ({ name, email, password }) => {
+  const register = async ({ name, username, email, password }) => {
     try {
       const credential = await createUserWithEmailAndPassword(auth, email, password)
+      const cleanUsername = username.trim().toLowerCase()
+
+      // Claim the username and create the profile document in ONE step.
+      // A transaction means "check if it's free, then save it" can't be
+      // interrupted by someone else grabbing the same name in between.
+      try {
+        await runTransaction(db, async (transaction) => {
+          const usernameRef = doc(db, 'usernames', cleanUsername)
+          const usernameSnap = await transaction.get(usernameRef)
+          if (usernameSnap.exists()) {
+            throw new Error('username-taken')
+          }
+          transaction.set(usernameRef, { uid: credential.user.uid })
+          transaction.set(doc(db, 'users', credential.user.uid), {
+            id: credential.user.uid,
+            username: cleanUsername,
+            email,
+            name: name.trim(),
+            avatar: '',
+            bio: 'Hey, there i am using app',
+            lastSeen: Date.now(),
+          })
+          // Empty chat list, so other people can start a chat with this
+          // user even before they have ever opened AmyTalk.
+          transaction.set(doc(db, 'chats', credential.user.uid), { chatsData: [] })
+        })
+      } catch (claimError) {
+        // Undo the account we just created, so the email isn't used up.
+        await credential.user.delete()
+        if (claimError.message === 'username-taken') {
+          return { success: false, message: 'That username is already taken.' }
+        }
+        throw claimError
+      }
+
       // Firebase accounts don't have a "name" field by default, so we set
       // it as a separate step right after creating the account.
       await updateProfile(credential.user, { displayName: name })

@@ -40,6 +40,9 @@ function Favorites() {
     }
   };
 
+    // songs that can actually play (they have a youtubeId), in the same order as on screen
+  const favoriteQueue = favoriteSongs.filter((song) => song.youtubeId);
+
   return (
     <div className="min-h-[calc(100vh-120px)] flex flex-col">
       <main className="flex-1 max-w-app mx-auto w-full px-4 sm:px-6 py-8 sm:py-12">
@@ -82,6 +85,7 @@ function Favorites() {
                 key={song.id}
                 song={song}
                 onToggleFavorite={handleToggleFavorite}
+                queue={favoriteQueue}
               />
             ))}
           </div>

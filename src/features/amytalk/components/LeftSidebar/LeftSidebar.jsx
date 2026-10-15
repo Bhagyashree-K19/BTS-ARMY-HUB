@@ -94,6 +94,7 @@ const LeftSidebar = () => {
       await setDoc(newMessageRef, {
         createAt: serverTimestamp(),
         messages: [],
+        participants: [userData.id, friend.id],
       });
 
       await updateDoc(doc(chatsRef, friend.id), {
