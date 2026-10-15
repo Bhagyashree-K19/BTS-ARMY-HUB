@@ -4,6 +4,7 @@ import Button from '../components/Button.jsx'
 import { useAuth } from '../context/AuthContext.jsx'
 import {
   validateName,
+  validateUsername,
   validateEmail,
   validatePassword,
   validateConfirmPassword,
@@ -15,6 +16,7 @@ function Register() {
 
   const [formData, setFormData] = useState({
     name: '',
+    username: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -33,6 +35,7 @@ function Register() {
 
     const newErrors = {
       name: validateName(formData.name),
+      username: validateUsername(formData.username),
       email: validateEmail(formData.email),
       password: validatePassword(formData.password),
       confirmPassword: validateConfirmPassword(formData.password, formData.confirmPassword),
@@ -71,6 +74,12 @@ function Register() {
             <label htmlFor="name" className="font-semibold text-sm">Full Name</label>
             <input id="name" name="name" type="text" value={formData.name} onChange={handleChange} className={inputClasses} />
             {errors.name && <p className="text-red-500 text-[0.82rem] m-0">{errors.name}</p>}
+          </div>
+
+          <div className="mb-4 flex flex-col gap-[0.3rem]">
+            <label htmlFor="username" className="font-semibold text-sm">Username</label>
+            <input id="username" name="username" type="text" value={formData.username} onChange={handleChange} className={inputClasses} />
+            {errors.username && <p className="text-red-500 text-[0.82rem] m-0">{errors.username}</p>}
           </div>
 
           <div className="mb-4 flex flex-col gap-[0.3rem]">

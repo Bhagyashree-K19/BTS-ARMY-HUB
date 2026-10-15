@@ -10,6 +10,18 @@ function formatTime(seconds) {
   const secs = Math.floor(seconds % 60)
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
+// Short label for the small cover: initials for titles with several words
+// ("2 Cool 4 Skool" -> "2C4S"), the first 3 letters for single-word titles.
+function getCoverLabel(title) {
+  const words = title
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}]/gu, ''))
+    .filter(Boolean)
+
+  if (words.length === 0) return '♪'
+  if (words.length === 1) return words[0].slice(0, 3).toUpperCase()
+  return words.map((word) => word.charAt(0)).join('').slice(0, 4).toUpperCase()
+}
 
 function PlayerBar() {
   const {
@@ -35,10 +47,11 @@ function PlayerBar() {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 min-[861px]:left-60 bg-surface border-t border-border px-4 py-3 flex items-center gap-4 z-[80]">
-      <div className="w-12 h-12 flex-shrink-0">
+    <div className="fixed bottom-0 left-0 right-0 min-[861px]:left-60 bg-surface border-t border-border px-3 sm:px-4 py-2 sm:py-3 flex flex-wrap items-center gap-x-3 gap-y-2 z-[80]">
+      {/* Cover */}
+      <div className="w-10 h-10 sm:w-12 sm:h-12 shrink-0">
         <PlaceholderCover
-          label={album?.title || currentSong.title}
+          label={getCoverLabel(album?.title || currentSong.title)}
           color={album?.color || '#7c3aed'}
           shape="square"
           radiusClass="rounded-sm"
@@ -46,12 +59,14 @@ function PlayerBar() {
         />
       </div>
 
-      <div className="min-w-0 w-[140px] flex-shrink-0">
+      {/* Title: takes the free space on phones, fixed width on bigger screens */}
+      <div className="min-w-0 flex-1 sm:flex-none sm:w-[140px]">
         <p className="m-0 text-sm font-semibold truncate">{currentSong.title}</p>
         {album && <p className="m-0 text-xs text-muted truncate">{album.title}</p>}
       </div>
 
-      <div className="flex-1 flex items-center gap-2">
+      {/* Buttons */}
+      <div className="flex items-center gap-2 shrink-0">
         <button
           onClick={playPrevious}
           disabled={!hasPrevious}
@@ -77,8 +92,11 @@ function PlayerBar() {
         >
           ⏭
         </button>
+      </div>
 
-        <span className="text-xs text-muted w-9 text-right flex-shrink-0">
+      {/* Seek area: its own full-width row on phones, shares the row on bigger screens */}
+      <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:min-w-0">
+        <span className="text-xs text-muted w-9 text-right shrink-0">
           {formatTime(progress)}
         </span>
         <input
@@ -87,10 +105,10 @@ function PlayerBar() {
           max={duration || 0}
           value={progress}
           onChange={handleScrub}
-          className="flex-1 accent-primary"
+          className="flex-1 min-w-0 accent-primary"
           aria-label="Seek"
         />
-        <span className="text-xs text-muted w-9 flex-shrink-0">
+        <span className="text-xs text-muted w-9 shrink-0">
           {formatTime(duration)}
         </span>
       </div>

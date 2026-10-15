@@ -52,13 +52,15 @@ function Navbar() {
     closeMenu()
   }
 
-  const navLinks = [
+    const navLinks = [
     { to: '/', label: 'Home', end: true },
     { to: '/members', label: 'Members' },
     { to: '/albums', label: 'Albums' },
     { to: '/songs', label: 'Songs' },
     { to: '/favorites', label: 'Favorites' },
     { to: '/community', label: 'Community' },
+    // AmyTalk link is shown only when the user is logged in
+    ...(isLoggedIn ? [{ to: '/amytalk', label: 'AmyTalk' }] : []),
   ]
 
   return (

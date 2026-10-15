@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { NavLink } from "react-router-dom";
 import { ref, push, remove, update, onValue } from "firebase/database";
-import { database } from "../firebase.js";
+import { doc, getDoc } from "firebase/firestore";
+import { database, db } from "../firebase.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
@@ -11,7 +12,7 @@ import EmptyState from "../components/EmptyState.jsx";
 // has a `parentId` (null for a top-level comment, or the id of whatever
 // it's replying to). This is what makes reply-to-a-reply possible without
 // redesigning the database again for deeper nesting.
-const MAX_VISUAL_INDENT = 4; // caps how far right deeply-nested replies indent, purely visual
+
 
 function buildTree(items) {
   const byId = {};
@@ -49,6 +50,19 @@ function collectDescendantIds(node) {
   return ids;
 }
 
+// Turns a timestamp into short text like "5m ago". After a week it shows the date.
+function timeAgo(timestamp) {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString();
+}
+
 // --- FIX: CommentNode lives here, at module scope, OUTSIDE Community.
 // Defining a component inside another component's function body creates
 // a brand-new function on every re-render, which React treats as an
@@ -68,102 +82,163 @@ function CommentNode({
   setReplyText,
   handleAddReply,
   setNodeToDelete,
+  profiles,
 }) {
-  const indent = Math.min(depth, MAX_VISUAL_INDENT);
+  // each comment remembers by itself if its replies are hidden
+  const [collapsed, setCollapsed] = useState(false);
+
   const replyTarget = items.find((item) => item.id === replyingToId);
+  const parent = depth > 0 ? items.find((item) => item.id === node.parentId) : null;
+  const isOwn = currentUser && currentUser.uid === node.authorUid;
+  const profile = profiles[node.authorUid];
+  const displayName = profile?.name || node.authorName;
+  const parentProfile = parent ? profiles[parent.authorUid] : null;
+  const isBeingRepliedTo = replyingToId === node.id;
+  const replyCount = collectDescendantIds(node).length;
+
+  // top-level comment = card, reply = softer bubble
+  const bubbleClasses =
+    depth === 0
+      ? "bg-surface border border-border rounded-md p-4"
+      : "bg-surface-alt rounded-md p-3";
+
+  // only the first reply level is indented, deeper replies stay in the same column
+  const wrapperClasses =
+    depth === 0 ? "" : depth === 1 ? "mt-3 ml-3 pl-3 border-l-2 border-border" : "mt-3";
 
   return (
-    <li
-      className={depth > 0 ? "mt-3 pl-4 border-l-2 border-border" : ""}
-      style={depth > 0 ? { marginLeft: `${indent * 4}px` } : undefined}
-    >
-      <div
-        className={
-          depth === 0 ? "bg-surface border border-border rounded-md p-4" : ""
-        }
-      >
-        <div
-          className={`flex justify-between mb-1 ${depth === 0 ? "text-sm text-muted" : "text-xs text-muted"}`}
-        >
-          <strong>{node.authorName}</strong>
-          <span>{new Date(node.createdAt).toLocaleString()}</span>
-        </div>
-        <p className={depth === 0 ? "" : "text-sm"}>{node.text}</p>
-
-        <div className="flex gap-3 text-sm mt-1">
-          {isLoggedIn && (
-            <button
-              className="bg-transparent border-none text-primary cursor-pointer p-0 hover:underline"
-              onClick={() => {
-                setReplyingToId(replyingToId === node.id ? null : node.id);
-                setReplyText("");
-              }}
+    <li className={wrapperClasses}>
+      <div className={`${bubbleClasses} ${isBeingRepliedTo ? "ring-2 ring-primary" : ""}`}>
+        <div className="flex items-start gap-3">
+          {profile?.avatar ? (
+            <img
+              src={profile.avatar}
+              alt=""
+              className="w-8 h-8 shrink-0 rounded-full object-cover"
+            />
+          ) : (
+            <div
+              aria-hidden="true"
+              className="w-8 h-8 shrink-0 rounded-full bg-primary text-white flex items-center justify-center text-sm font-semibold"
             >
-              Reply
-            </button>
+              {displayName?.charAt(0).toUpperCase()}
+            </div>
           )}
-          {currentUser && currentUser.uid === node.authorUid && (
-            <button
-              className="bg-transparent border-none text-red-500 cursor-pointer p-0 hover:underline"
-              onClick={() => setNodeToDelete(node)}
-            >
-              Delete
-            </button>
-          )}
-        </div>
 
-        {replyingToId === node.id && (
-          <form
-            className="flex flex-col gap-2 mt-3"
-            onSubmit={(e) => handleAddReply(e, node.id)}
-          >
-            <div className="flex items-start gap-2 bg-surface-alt border-l-2 border-primary rounded-sm p-2 text-sm">
-              <div className="flex-1 min-w-0">
-                <p className="text-primary font-semibold mb-0.5">
-                  Replying to {replyTarget?.authorName}
-                </p>
-                <p className="text-muted truncate mb-0">
-                  {replyTarget?.text}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setReplyingToId(null);
-                  setReplyText("");
-                }}
-                aria-label="Cancel reply"
-                title="Cancel reply"
-                className="bg-transparent border-none cursor-pointer text-muted flex-shrink-0"
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2 text-sm">
+              <strong className="text-ink">{displayName}</strong>
+              {profile?.username && (
+                <span className="text-xs text-muted">@{profile.username}</span>
+              )}
+              {isOwn && (
+                <span className="text-xs text-primary border border-primary rounded-full px-2">
+                  You
+                </span>
+              )}
+              <span
+                className="text-xs text-muted"
+                title={new Date(node.createdAt).toLocaleString()}
               >
-                ✕
-              </button>
+                {timeAgo(node.createdAt)}
+              </span>
             </div>
 
-            <div className="flex items-end gap-2">
-              <textarea
-                value={replyText}
-                onChange={(e) => setReplyText(e.target.value)}
-                placeholder={`Reply to ${node.authorName}...`}
-                rows={2}
-                className="flex-1 p-2 rounded-sm border border-border bg-surface-alt text-ink text-sm resize-y"
-                autoFocus
-              />
-              <button
-                type="submit"
-                disabled={!replyText.trim()}
-                aria-label="Send reply"
-                title="Send reply"
-                className="w-9 h-9 flex-shrink-0 rounded-full bg-primary text-white flex items-center justify-center border-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                ➤
-              </button>
+            {parent && (
+              <p className="text-xs text-muted mt-0.5 truncate">
+                ↪ replying to{" "}
+                <span className="text-primary font-semibold">@{parentProfile?.username || parent.authorName}</span>
+              </p>
+            )}
+
+            <p className={`mt-1 break-words whitespace-pre-wrap ${depth === 0 ? "" : "text-sm"}`}>
+              {node.text}
+            </p>
+
+            <div className="flex flex-wrap gap-3 text-sm mt-2">
+              {isLoggedIn && (
+                <button
+                  className="bg-transparent border-none text-primary cursor-pointer p-0 hover:underline"
+                  onClick={() => {
+                    setReplyingToId(replyingToId === node.id ? null : node.id);
+                    setReplyText("");
+                  }}
+                >
+                  Reply
+                </button>
+              )}
+              {isOwn && (
+                <button
+                  className="bg-transparent border-none text-red-500 cursor-pointer p-0 hover:underline"
+                  onClick={() => setNodeToDelete(node)}
+                >
+                  Delete
+                </button>
+              )}
+              {node.children.length > 0 && (
+                <button
+                  className="bg-transparent border-none text-muted cursor-pointer p-0 hover:underline"
+                  onClick={() => setCollapsed((prev) => !prev)}
+                >
+                  {collapsed
+                    ? `Show ${replyCount} ${replyCount === 1 ? "reply" : "replies"}`
+                    : "Hide replies"}
+                </button>
+              )}
             </div>
-          </form>
-        )}
+
+            {replyingToId === node.id && (
+              <form
+                className="flex flex-col gap-2 mt-3"
+                onSubmit={(e) => handleAddReply(e, node.id)}
+              >
+                <div className="flex items-start gap-2 bg-surface-alt border-l-2 border-primary rounded-sm p-2 text-sm">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-primary font-semibold mb-0.5">
+                      Replying to {replyTarget?.authorName}
+                    </p>
+                    <p className="text-muted truncate mb-0">{replyTarget?.text}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplyingToId(null);
+                      setReplyText("");
+                    }}
+                    aria-label="Cancel reply"
+                    title="Cancel reply"
+                    className="bg-transparent border-none cursor-pointer text-muted shrink-0"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="flex items-end gap-2">
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder={`Reply to ${node.authorName}...`}
+                    rows={2}
+                    className="flex-1 p-2 rounded-sm border border-border bg-surface text-ink text-sm resize-y"
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    disabled={!replyText.trim()}
+                    aria-label="Send reply"
+                    title="Send reply"
+                    className="w-9 h-9 shrink-0 rounded-full bg-primary text-white flex items-center justify-center border-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    ➤
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
       </div>
 
-      {node.children.length > 0 && (
+      {node.children.length > 0 && !collapsed && (
         <ul className="list-none">
           {node.children.map((child) => (
             <CommentNode
@@ -179,6 +254,7 @@ function CommentNode({
               setReplyText={setReplyText}
               handleAddReply={handleAddReply}
               setNodeToDelete={setNodeToDelete}
+              profiles={profiles}
             />
           ))}
         </ul>
@@ -193,6 +269,7 @@ function Community() {
   const [newComment, setNewComment] = useState("");
   const [error, setError] = useState("");
   const [nodeToDelete, setNodeToDelete] = useState(null); // the tree node (with .children) pending delete confirmation
+  const [profiles, setProfiles] = useState({}); // uid -> profile from Firestore
 
   // Which item id (comment OR reply) is currently being replied to, and
   // what's typed into that reply box. Only one open at a time.
@@ -211,6 +288,34 @@ function Community() {
     });
     return unsubscribe;
   }, []);
+
+  // Look up each comment author's profile (avatar, name, username) once.
+  useEffect(() => {
+    const missing = [...new Set(items.map((i) => i.authorUid))].filter(
+      (uid) => uid && !(uid in profiles),
+    );
+    if (missing.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      missing.map(async (uid) => {
+        try {
+          const snap = await getDoc(doc(db, "users", uid));
+          return [uid, snap.exists() ? snap.data() : null];
+        } catch {
+          return [uid, null]; // no access or no profile: fall back to the saved name
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) {
+        setProfiles((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
 
   const handleAddComment = async (e) => {
     e.preventDefault();
@@ -233,9 +338,18 @@ function Community() {
 
   // Generalized to reply to ANY node (a top-level comment or an existing
   // reply), by just setting parentId to that node's id.
-  const handleAddReply = async (e, parentId) => {
+    const handleAddReply = async (e, parentId) => {
     e.preventDefault();
     if (!replyText.trim()) return;
+
+    // Everyone above this reply in the thread, so the database rules can let
+    // them delete it later (see the "ancestors" rule).
+    const parentItem = items.find((item) => item.id === parentId);
+    if (!parentItem) return;
+    const ancestors = {
+      ...(parentItem.ancestors || {}),
+      [parentItem.authorUid]: true,
+    };
 
     await push(ref(database, "comments"), {
       authorUid: currentUser.uid,
@@ -243,6 +357,7 @@ function Community() {
       text: replyText.trim(),
       createdAt: Date.now(),
       parentId,
+      ancestors,
     });
 
     setReplyText("");
@@ -323,6 +438,7 @@ function Community() {
               setReplyText={setReplyText}
               handleAddReply={handleAddReply}
               setNodeToDelete={setNodeToDelete}
+              profiles={profiles}
             />
           ))}
         </ul>

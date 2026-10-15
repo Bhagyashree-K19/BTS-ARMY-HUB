@@ -25,3 +25,11 @@ export function validateConfirmPassword(password, confirmPassword) {
   if (password !== confirmPassword) return 'Passwords do not match.'
   return ''
 }
+
+export function validateUsername(username) {
+  if (!username.trim()) return 'Username is required.'
+  if (!/^[a-z0-9_]{3,20}$/.test(username.trim().toLowerCase())) {
+    return 'Username must be 3-20 characters: letters, numbers and underscores only.'
+  }
+  return ''
+}
